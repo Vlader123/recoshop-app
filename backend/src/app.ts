@@ -10,6 +10,7 @@ import { adminRouter } from './routes/admin';
 import { authRouter } from './routes/auth';
 import { catalogRouter } from './routes/catalog';
 import { subscriptionsRouter } from './routes/subscriptions';
+import { reportsRouter } from './routes/reports';
 import { userRouter } from './routes/user';
 
 export function createApp() {
@@ -32,6 +33,7 @@ export function createApp() {
   app.use('/api/admin', adminRouter);
   app.use('/api', catalogRouter);
   app.use('/api', subscriptionsRouter);
+  app.use('/api', reportsRouter);
   app.use('/api', userRouter);
 
   app.use(notFoundHandler);

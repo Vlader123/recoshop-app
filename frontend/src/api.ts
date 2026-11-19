@@ -25,6 +25,12 @@ export interface Analytics {
   training: { running: boolean; error: string | null; finishedAt: string | null; trainedModels: { algorithm: string; ms: number }[] }
 }
 
+export interface SiteReport {
+  id: number; kind: 'complaint' | 'bug'; title: string; message: string; page: string | null
+  status: 'new' | 'in_progress' | 'resolved' | 'dismissed'; adminNote: string | null
+  author: string | null; handledBy: string | null; createdAt: string; updatedAt: string
+}
+
 export class ApiError extends Error {
   constructor(public status: number, public code: string, message: string) { super(message) }
 }

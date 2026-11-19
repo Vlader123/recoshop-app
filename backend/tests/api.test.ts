@@ -327,3 +327,36 @@ describe('приватність', () => {
     expect(r.body.error.code).toBe('NOT_FOUND');
   });
 });
+
+describe('звернення до підтримки', () => {
+  const body = { kind: 'bug', title: 'Не працює пошук', message: 'Після введення запиту сторінка не оновлюється', page: '/catalog' };
+
+  it('приймає звернення гостя зі станом new', async () => {
+    const r = await request(app).post('/api/site-reports').send(body);
+    expect(r.status).toBe(201);
+    expect(r.body.status).toBe('new');
+  });
+
+  it('відхиляє надто короткий опис', async () => {
+    const r = await request(app).post('/api/site-reports').send({ ...body, message: 'коротко' });
+    expect(r.status).toBe(400);
+    expect(r.body.error.code).toBe('VALIDATION_ERROR');
+  });
+
+  it('список і зміна стану доступні лише менеджеру', async () => {
+    const id = (await request(app).post('/api/site-reports').send(body)).body.id;
+    expect((await request(app).get('/api/admin/site-reports').set(auth(demoToken))).status).toBe(403);
+    expect((await request(app).patch(`/api/admin/site-reports/${id}`).send({ status: 'resolved' })).status).toBe(401);
+    const upd = await request(app).patch(`/api/admin/site-reports/${id}`).set(auth(managerToken)).send({ status: 'in_progress', adminNote: 'Відтворено' });
+    expect(upd.status).toBe(200);
+    expect(upd.body.status).toBe('in_progress');
+    expect(upd.body.adminNote).toBe('Відтворено');
+    const list = await request(app).get('/api/admin/site-reports?status=in_progress').set(auth(managerToken));
+    expect(list.body.items.some((x: any) => x.id === id)).toBe(true);
+  });
+
+  it('повертає 404 для неіснуючого звернення', async () => {
+    const r = await request(app).patch('/api/admin/site-reports/999999').set(auth(managerToken)).send({ status: 'dismissed' });
+    expect(r.status).toBe(404);
+  });
+});

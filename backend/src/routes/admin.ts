@@ -164,3 +164,59 @@ adminRouter.post(
   })
 );
 
+
+const reportRow = (r: any) => ({
+  id: Number(r.id), kind: r.kind, title: r.title, message: r.message, page: r.page, status: r.status,
+  adminNote: r.admin_note, author: r.author_email ?? null, handledBy: r.handler_email ?? null,
+  createdAt: r.created_at, updatedAt: r.updated_at
+});
+
+adminRouter.get(
+  '/site-reports',
+  wrap(async (req, res) => {
+    const q = z
+      .object({
+        status: z.enum(['new', 'in_progress', 'resolved', 'dismissed']).optional(),
+        kind: z.enum(['complaint', 'bug']).optional(),
+        page: z.coerce.number().int().min(1).default(1),
+        limit: z.coerce.number().int().min(1).max(100).default(20)
+      })
+      .parse(req.query);
+    const where: string[] = [];
+    const params: unknown[] = [];
+    if (q.status) { params.push(q.status); where.push(`r.status = $${params.length}`); }
+    if (q.kind) { params.push(q.kind); where.push(`r.kind = $${params.length}`); }
+    const w = where.length ? 'WHERE ' + where.join(' AND ') : '';
+    const total = await queryOne(`SELECT count(*)::int AS n FROM site_reports r ${w}`, params);
+    const items = await query(
+      `SELECT r.*, u.email AS author_email, h.email AS handler_email
+       FROM site_reports r LEFT JOIN users u ON u.id = r.user_id LEFT JOIN users h ON h.id = r.handled_by
+       ${w} ORDER BY r.created_at DESC LIMIT ${q.limit} OFFSET ${(q.page - 1) * q.limit}`,
+      params
+    );
+    res.json({ total: total!.n, page: q.page, items: items.map(reportRow) });
+  })
+);
+
+adminRouter.patch(
+  '/site-reports/:id',
+  wrap(async (req, res) => {
+    const id = z.coerce.number().int().parse(req.params.id);
+    const b = z
+      .object({ status: z.enum(['new', 'in_progress', 'resolved', 'dismissed']).optional(), adminNote: z.string().trim().max(4000).optional() })
+      .refine((v) => v.status !== undefined || v.adminNote !== undefined, 'Потрібно вказати status або adminNote')
+      .parse(req.body);
+    const row = await queryOne(
+      `UPDATE site_reports SET status = COALESCE($2, status), admin_note = COALESCE($3, admin_note), handled_by = $4, updated_at = now()
+       WHERE id = $1 RETURNING id`,
+      [id, b.status ?? null, b.adminNote ?? null, req.user!.id]
+    );
+    if (!row) throw Errors.notFound('Звернення');
+    const full = await queryOne(
+      `SELECT r.*, u.email AS author_email, h.email AS handler_email FROM site_reports r
+       LEFT JOIN users u ON u.id = r.user_id LEFT JOIN users h ON h.id = r.handled_by WHERE r.id = $1`,
+      [id]
+    );
+    res.json(reportRow(full));
+  })
+);

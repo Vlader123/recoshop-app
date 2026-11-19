@@ -1,10 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { FormEvent, useState } from 'react'
 import { Navigate } from 'react-router-dom'
-import { Analytics, api, Category } from '../api'
+import { Analytics, api, Category, SiteReport } from '../api'
 import { useAuth } from '../auth'
 
 const ALG: Record<string, string> = { item_cf: 'Item-based CF', user_cf: 'User-based CF', mf: 'Матрична факторизація', popularity: 'Популярність (база)' }
+const STATUS: Record<string, string> = { new: 'Нове', in_progress: 'У роботі', resolved: 'Виправлено', dismissed: 'Відхилено' }
 const pct = (n: number) => (n * 100).toFixed(1) + '%'
 
 export default function Admin() {
@@ -17,6 +18,17 @@ export default function Admin() {
   const guard = (fn: () => Promise<unknown>) => async () => { setMsg(null); try { await fn(); refresh() } catch (e) { setMsg((e as Error).message) } }
   const train = useMutation({ mutationFn: () => api('/admin/train', { method: 'POST' }), onSuccess: refresh, onError: (e) => setMsg((e as Error).message) })
   const evaluate = useMutation({ mutationFn: () => api('/admin/evaluate', { method: 'POST' }), onSuccess: refresh, onError: (e) => setMsg((e as Error).message) })
+  const [repFilter, setRepFilter] = useState('')
+  const reports = useQuery({
+    queryKey: ['site-reports', repFilter],
+    queryFn: () => api<{ total: number; items: SiteReport[] }>('/admin/site-reports' + (repFilter ? `?status=${repFilter}` : '')),
+    enabled: user?.role === 'manager',
+  })
+  const updReport = useMutation({
+    mutationFn: (v: { id: number; status?: string; adminNote?: string }) => api(`/admin/site-reports/${v.id}`, { method: 'PATCH', body: { status: v.status, adminNote: v.adminNote } }),
+    onSuccess: () => qc.invalidateQueries({ queryKey: ['site-reports'] }),
+    onError: (e) => setMsg((e as Error).message),
+  })
   const [csv, setCsv] = useState('')
   const [prod, setProd] = useState({ categoryId: 1, title: '', price: 100, description: '' })
 
@@ -87,6 +99,25 @@ export default function Admin() {
               <input className="input" placeholder="Опис" value={prod.description} onChange={(e) => setProd({ ...prod, description: e.target.value })} />
               <button className="btn btn-primary btn-sm">Додати</button>
             </form>
+          </div>
+
+          <div className="section-head"><h2>Скарги та помилки</h2>
+            <select className="input" style={{ width: 'auto' }} value={repFilter} onChange={(e) => setRepFilter(e.target.value)}>
+              <option value="">Усі стани</option>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}
+            </select></div>
+          <div className="card pad">
+            {reports.data?.items.length ? (
+              <table><thead><tr><th>№</th><th>Тип</th><th>Тема і опис</th><th>Автор</th><th>Стан</th><th>Нотатка</th></tr></thead>
+                <tbody>{reports.data.items.map((r) => (
+                  <tr key={r.id}>
+                    <td>{r.id}</td><td>{r.kind === 'bug' ? 'Помилка' : 'Скарга'}</td>
+                    <td><b>{r.title}</b><div className="muted small">{r.message}</div></td>
+                    <td>{r.author ?? 'гість'}</td>
+                    <td><select className="input" value={r.status} onChange={(e) => updReport.mutate({ id: r.id, status: e.target.value })}>{Object.entries(STATUS).map(([k, v]) => <option key={k} value={k}>{v}</option>)}</select></td>
+                    <td><input className="input" defaultValue={r.adminNote ?? ''} placeholder="Нотатка" onBlur={(e) => e.target.value !== (r.adminNote ?? '') && updReport.mutate({ id: r.id, adminNote: e.target.value })} /></td>
+                  </tr>
+                ))}</tbody></table>
+            ) : <p className="muted">Звернень немає.</p>}
           </div>
         </>
       )}

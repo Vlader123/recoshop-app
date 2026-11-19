@@ -111,6 +111,21 @@ CREATE TABLE IF NOT EXISTS recommendations (
 );
 CREATE INDEX IF NOT EXISTS idx_reco_user ON recommendations(user_id, created_at DESC);
 
+CREATE TABLE IF NOT EXISTS site_reports (
+  id         BIGSERIAL PRIMARY KEY,
+  kind       VARCHAR(12) NOT NULL CHECK (kind IN ('complaint','bug')),
+  title      VARCHAR(150) NOT NULL,
+  message    TEXT NOT NULL,
+  page       VARCHAR(500),
+  user_id    UUID REFERENCES users(id) ON DELETE SET NULL,
+  status     VARCHAR(16) NOT NULL DEFAULT 'new' CHECK (status IN ('new','in_progress','resolved','dismissed')),
+  admin_note TEXT,
+  handled_by UUID REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+CREATE INDEX IF NOT EXISTS idx_site_reports_status ON site_reports(status, created_at DESC);
+
 CREATE TABLE IF NOT EXISTS metrics (
   id            BIGSERIAL PRIMARY KEY,
   model_id      INTEGER REFERENCES models(id),
